@@ -14,6 +14,8 @@ class Agent:
     def __init__(self, input_dim, env, gamma=0.99, tau=5e-3, gae_lambda=0.9, n_actions=2, batch_size=64, n_epochs=10, max_size=int(1e6), fc1_dims=400, fc2_dims=300):
         self.gamma = gamma
         self.tau = tau
+        self.min_reward = -500
+        self.max_reward = 500
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.min_action = env.action_space.high[0]
@@ -21,12 +23,12 @@ class Agent:
         self.gae_lambda = gae_lambda
         self.noise = OUNoise(mu=np.zeros(n_actions))
         self.arl_discriminator = Discriminator(1, chkpt_dir="models/arl")
-        self.arl_policy = Policy(lr=3e-4, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_policy")
-        self.arl_value = Value(lr=3e-4, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_value")
+        self.arl_policy = Policy(lr=0.000025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_policy")
+        self.arl_value = Value(lr=0.00025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_value")
         self.airl_discriminator = Discriminator(n_actions, chkpt_dir="models/airl")
-        self.airl_policy = Policy(lr=3e-4, input_dims=input_dim, fc1_dims=400, fc2_dims=300, n_actions=2, chkp_dir="models/airl", name="torch_policy")
+        self.airl_policy = Policy(lr=0.000025, input_dims=input_dim, fc1_dims=400, fc2_dims=300, n_actions=2, chkp_dir="models/airl", name="torch_policy")
         self.airl_reward = Reward(input_dim + n_actions, chkpt_dir="models/airl")
-        self.airl_value = Value(lr=3e-4, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/airl", name="torch_value")
+        self.airl_value = Value(lr=0.00025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/airl", name="torch_value")
         self.memory = ReplayBuffer(max_size, input_dim, n_actions)
         self.discriminator_criterion = nn.MSELoss()
         self.update_network_parameters(tau=1)
@@ -95,8 +97,6 @@ class Agent:
         self.arl_value.train()
         self.arl_value.optimizer.zero_grad()
         critic_loss = F.mse_loss(target, critic_value)
-        for param in self.arl_value.parameters():
-            critic_loss += 0.5 * torch.norm(param, p=2) ** 2  # L2 regularization term
         critic_loss.backward()
         self.arl_value.optimizer.step()
 
@@ -120,43 +120,18 @@ class Agent:
         discriminator_airl_loss.backward()
         self.airl_discriminator.optimizer.step()
 
-        # Train AIRL DDPG
-        self.arl_value.eval()
-        self.airl_value.eval()
-        self.arl_policy.eval()
-
-        target_actions = self.arl_policy(next_states)
-        target_actions = (target_actions - self.min_action) * (self.max_action - self.min_action) / 2 + self.min_action
-        critic_target_value = self.arl_value(next_states, target_actions)
-        critic_value = self.airl_value(states, actions)
-
-        target = estimate_reward(states, actions, self.airl_reward, -500, 500).reshape(self.batch_size, 1) + self.gamma * critic_target_value * dones.reshape(self.batch_size, 1)
-
-        self.airl_value.train()
-        self.airl_value.optimizer.zero_grad()
-        critic_loss = F.mse_loss(target, critic_value)
-        for param in self.arl_value.parameters():
-            critic_loss += 0.5 * torch.norm(param, p=2) ** 2  # L2 regularization term
-        critic_loss.backward()
-        self.airl_value.optimizer.step()
-
-        self.airl_value.eval()
-        self.airl_policy.optimizer.zero_grad()
-        mu = self.airl_policy(states)
-        mu = (mu - self.min_action) * (self.max_action - self.min_action) / 2 + self.min_action
-        self.airl_policy.train()
-        actor_loss = -self.airl_value(states, mu).mean()
-        actor_loss.backward()
-        self.airl_policy.optimizer.step()
-
-        # Train Discriminator ARL
-        false_reward_labels = estimate_reward(states, actions, self.airl_reward, -500, 500)
+        # Train AIRL
+        concatenated_input = torch.cat((states, actions), dim=1)
+        predicted_rewards = self.airl_reward(concatenated_input)
+        false_reward_labels = (predicted_rewards - self.min_reward) * (self.max_reward - self.min_reward) / 2 + self.min_reward
         true_reward_labels = self.arl_discriminator(rewards.reshape(self.batch_size, 1))
         false_reward_labels = self.arl_discriminator(false_reward_labels)
         discriminator_arl_loss = self.discriminator_criterion(true_reward_labels, false_reward_labels)
 
         self.arl_discriminator.optimizer.zero_grad()
+        self.airl_reward.optimizer.zero_grad()
         discriminator_arl_loss.backward()
+        self.airl_reward.optimizer.step()
         self.arl_discriminator.optimizer.step()
         self.update_network_parameters()
 

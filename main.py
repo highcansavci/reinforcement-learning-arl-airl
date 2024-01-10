@@ -6,10 +6,8 @@ from utils.utils import plot_learning_curve
 
 if __name__ == "__main__":
     env = gym.make("LunarLanderContinuous-v2")
-    num_horizon = 2500
-    batch_size = 256
-    n_epochs = 4
-    alpha = 3e-4
+    num_horizon = 10000
+    batch_size = 64
     agent_ = Agent(input_dim=env.observation_space.shape[0], env=env)
 
     #agent_.load_models()
@@ -33,9 +31,8 @@ if __name__ == "__main__":
             n_steps += 1
             score += reward
             agent_.remember(observation, action, reward, observation_, done)
-            if n_steps % num_horizon == 0:
-                agent_.learn()
-                learn_iters += 1
+            agent_.learn()
+            learn_iters += 1
             observation = observation_
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
