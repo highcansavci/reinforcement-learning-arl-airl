@@ -80,16 +80,6 @@ class Agent:
         dones = torch.tensor(dones, dtype=torch.float32, device=self.arl_policy.device)
         states = torch.tensor(states, dtype=torch.float32, device=self.arl_policy.device)
 
-        # Train Discriminator AIRL
-        true_policy_labels = self.airl_discriminator(actions)
-        false_policy_labels = self.arl_policy(states).to(self.arl_discriminator.device)
-        false_policy_labels = (false_policy_labels - self.min_action) * (self.max_action - self.min_action) / 2 + self.min_action
-        false_policy_labels = self.airl_discriminator(false_policy_labels)
-        discriminator_airl_loss = self.discriminator_criterion(true_policy_labels, false_policy_labels)
-        self.airl_discriminator.optimizer.zero_grad()
-        discriminator_airl_loss.backward()
-        self.airl_discriminator.optimizer.step()
-
         # Train ARL DDPG
         self.arl_value.eval()
         self.airl_value.eval()
@@ -119,15 +109,16 @@ class Agent:
         actor_loss.backward()
         self.arl_policy.optimizer.step()
 
-        # Train Discriminator ARL
-        false_reward_labels = estimate_reward(states, actions, self.airl_reward, -500, 500)
-        true_reward_labels = self.arl_discriminator(rewards.reshape(self.batch_size, 1))
-        false_reward_labels = self.arl_discriminator(false_reward_labels)
-        discriminator_arl_loss = self.discriminator_criterion(true_reward_labels, false_reward_labels)
-
-        self.arl_discriminator.optimizer.zero_grad()
-        discriminator_arl_loss.backward()
-        self.arl_discriminator.optimizer.step()
+        # Train Discriminator AIRL
+        true_policy_labels = self.airl_discriminator(actions)
+        false_policy_labels = self.arl_policy(states).to(self.arl_discriminator.device)
+        false_policy_labels = (false_policy_labels - self.min_action) * (
+                    self.max_action - self.min_action) / 2 + self.min_action
+        false_policy_labels = self.airl_discriminator(false_policy_labels)
+        discriminator_airl_loss = self.discriminator_criterion(true_policy_labels, false_policy_labels)
+        self.airl_discriminator.optimizer.zero_grad()
+        discriminator_airl_loss.backward()
+        self.airl_discriminator.optimizer.step()
 
         # Train AIRL DDPG
         self.arl_value.eval()
@@ -157,6 +148,16 @@ class Agent:
         actor_loss = -self.airl_value(states, mu).mean()
         actor_loss.backward()
         self.airl_policy.optimizer.step()
+
+        # Train Discriminator ARL
+        false_reward_labels = estimate_reward(states, actions, self.airl_reward, -500, 500)
+        true_reward_labels = self.arl_discriminator(rewards.reshape(self.batch_size, 1))
+        false_reward_labels = self.arl_discriminator(false_reward_labels)
+        discriminator_arl_loss = self.discriminator_criterion(true_reward_labels, false_reward_labels)
+
+        self.arl_discriminator.optimizer.zero_grad()
+        discriminator_arl_loss.backward()
+        self.arl_discriminator.optimizer.step()
         self.update_network_parameters()
 
     def update_network_parameters(self, tau=None):
