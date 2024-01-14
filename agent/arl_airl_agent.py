@@ -23,12 +23,12 @@ class Agent:
         self.gae_lambda = gae_lambda
         self.noise = OUNoise(mu=np.zeros(n_actions))
         self.arl_discriminator = Discriminator(1, chkpt_dir="models/arl")
-        self.arl_policy = Policy(lr=0.000025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_policy")
-        self.arl_value = Value(lr=0.00025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_value")
+        self.arl_policy = Policy(lr=3e-3, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_policy")
+        self.arl_value = Value(lr=3e-4, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/arl", name="torch_value")
         self.airl_discriminator = Discriminator(n_actions, chkpt_dir="models/airl")
-        self.airl_policy = Policy(lr=0.000025, input_dims=input_dim, fc1_dims=400, fc2_dims=300, n_actions=2, chkp_dir="models/airl", name="torch_policy")
+        self.airl_policy = Policy(lr=3e-3, input_dims=input_dim, fc1_dims=400, fc2_dims=300, n_actions=2, chkp_dir="models/airl", name="torch_policy")
         self.airl_reward = Reward(input_dim + n_actions, chkpt_dir="models/airl")
-        self.airl_value = Value(lr=0.00025, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/airl", name="torch_value")
+        self.airl_value = Value(lr=3e-4, input_dims=input_dim, fc1_dims=fc1_dims, fc2_dims=fc2_dims, n_actions=n_actions, chkp_dir="models/airl", name="torch_value")
         self.memory = ReplayBuffer(max_size, input_dim, n_actions)
         self.discriminator_criterion = nn.MSELoss()
         self.update_network_parameters(tau=1)
@@ -90,7 +90,7 @@ class Agent:
         target_actions = self.airl_policy(next_states)
         target_actions = (target_actions - self.min_action) * (self.max_action - self.min_action) / 2 + self.min_action
         critic_target_value = self.airl_value(next_states, target_actions)
-        critic_value = self.arl_value(states, actions)
+        critic_value = self.airl_value(states, actions)
 
         target = rewards.reshape(self.batch_size, 1) + self.gamma * critic_target_value * dones.reshape(self.batch_size, 1)
 

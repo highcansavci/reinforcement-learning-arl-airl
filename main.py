@@ -7,7 +7,7 @@ from utils.utils import plot_learning_curve
 if __name__ == "__main__":
     env = gym.make("LunarLanderContinuous-v2")
     num_horizon = 10000
-    batch_size = 64
+    batch_size = 256
     agent_ = Agent(input_dim=env.observation_space.shape[0], env=env)
 
     #agent_.load_models()
